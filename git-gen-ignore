@@ -1,0 +1,71 @@
+#!/usr/bin/env stack
+-- stack --resolver lts-14.20 --install-ghc runghc --package HTTP --package split --package directory --package monad-loops
+import Control.Monad (unless, when)
+import Control.Monad.Loops (whileM_)
+import Data.Char (toLower)
+import Data.IORef (newIORef, readIORef, writeIORef)
+import Data.List (intercalate)
+import Data.List.Split.Internals (splitOneOf)
+import Network.HTTP (getRequest, getResponseBody, simpleHTTP)
+import System.Directory (doesFileExist)
+import System.Environment (getArgs)
+import System.Exit (exitFailure, exitSuccess)
+
+-- Networking
+get :: String -> IO String
+get url = simpleHTTP (getRequest url) >>= getResponseBody
+
+-- gitignore.io
+baseUrl :: String
+baseUrl = "http://www.gitignore.io/api/"
+
+formatUrl :: [String] -> String
+formatUrl xs = baseUrl ++ params
+  where
+    params = intercalate "," xs
+
+getErrors :: [String] -> IO [String]
+getErrors xs = do
+  content <- get $ baseUrl ++ "list"
+  let split = splitOneOf ",\n" content
+  let errors = filter (`notElem` split) xs
+  return errors
+
+-- App
+gitignoreFileName :: String
+gitignoreFileName = ".gitignore"
+
+data Answer
+  = Yes
+  | No
+  | Unknown
+  deriving (Eq)
+
+main :: IO ()
+main = do
+  args <- getArgs
+  when (null args) $ do
+    putStrLn "Usage: git genignore [list of OS, IDE, Programming languages separated by a space]"
+    exitFailure
+  errors <- getErrors args
+  unless (null errors) $ do
+    putStrLn $ "Error: some arguments were not recognized\n" ++ intercalate ", " errors
+    exitFailure
+  content <- get $ formatUrl args
+  fileAlreadyPresent <- doesFileExist gitignoreFileName
+  when fileAlreadyPresent $ do
+    userInput <- newIORef Unknown
+    whileM_ ((Unknown ==) <$> readIORef userInput) $ do
+      putStrLn $ gitignoreFileName ++ " is already present, overwrite it? [y/n]"
+      input <- getLine
+      let lower = map toLower input
+      when (lower == "y") $ writeIORef userInput Yes
+      when (lower == "n") $ writeIORef userInput No
+    overwrite <- readIORef userInput
+    case overwrite of
+      Yes -> return ()
+      No -> do
+        putStrLn content
+        exitSuccess
+      _ -> exitFailure
+  writeFile gitignoreFileName content
