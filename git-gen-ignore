@@ -45,11 +45,11 @@ main :: IO ()
 main = do
   args <- getArgs
   when (null args) $ do
-    putStrLn "Usage: git genignore [list of OS, IDE, Programming languages separated by a space]"
+    putStrLn "Usage: git gen-ignore [list of OS, IDE, Programming Languages separated by spaces]\nExample: git gen-ignore haskell intellij"
     exitFailure
   errors <- getErrors args
   unless (null errors) $ do
-    putStrLn $ "Error: some arguments were not recognized\n" ++ intercalate ", " errors
+    putStrLn $ "[Error] Some arguments were not recognized:\n" ++ intercalate ", " errors
     exitFailure
   content <- get $ formatUrl args
   fileAlreadyPresent <- doesFileExist gitignoreFileName
