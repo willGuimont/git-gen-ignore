@@ -1,11 +1,13 @@
 #!/usr/bin/env stack
--- stack --resolver lts-14.20 --install-ghc runghc --package HTTP --package split --package directory --package monad-loops
+-- stack --resolver lts-14.20 --install-ghc runghc --package HTTP --package split --package directory --package monad-loops --package containers
+
 import Control.Monad (unless, when)
 import Control.Monad.Loops (whileM_)
 import Data.Char (toLower)
 import Data.IORef (newIORef, readIORef, writeIORef)
-import Data.List (intercalate)
+import Data.List (intercalate, isInfixOf)
 import Data.List.Split.Internals (splitOneOf)
+import qualified Data.Set as Set
 import Network.HTTP (getRequest, getResponseBody, simpleHTTP)
 import System.Directory (doesFileExist)
 import System.Environment (getArgs)
@@ -22,18 +24,25 @@ baseUrl = "http://www.gitignore.io/api/"
 formatUrl :: [String] -> String
 formatUrl xs = baseUrl ++ params
   where
-    params = intercalate "," xs
+    params = intercalate "," $ map (map toLower) xs
+
+getPossibleArgs :: IO [String]
+getPossibleArgs = do
+  content <- get $ baseUrl ++ "list"
+  return $ splitOneOf ",\n" content
 
 getErrors :: [String] -> IO [String]
 getErrors xs = do
-  content <- get $ baseUrl ++ "list"
-  let split = splitOneOf ",\n" content
-  let errors = filter (`notElem` split) xs
+  possibleArgs <- getPossibleArgs
+  let errors = filter (`notElem` possibleArgs) xs
   return errors
 
 -- App
 gitignoreFileName :: String
 gitignoreFileName = ".gitignore"
+
+getFromSearch :: [String] -> String -> [String]
+getFromSearch possibles search = filter (isInfixOf search) possibles
 
 data Answer
   = Yes
@@ -45,11 +54,20 @@ main :: IO ()
 main = do
   args <- getArgs
   when (null args) $ do
-    putStrLn "Usage: git gen-ignore [list of OS, IDE, Programming Languages separated by spaces]\nExample: git gen-ignore haskell intellij"
+    putStrLn "Usage: "
+    putStrLn "git genignore [list of OS, IDE, Programming languages separated by a space]"
+    putStrLn "or"
+    putStrLn "git genignore list [list of search terms separated by a space]"
     exitFailure
+  when (head args == "list") $ do
+    possibleArgs <- getPossibleArgs
+    let searched = mconcat $ map (getFromSearch possibleArgs) $ tail args
+    let unique = (Set.toList . Set.fromList) searched
+    putStrLn $ intercalate "\n" unique
+    exitSuccess
   errors <- getErrors args
   unless (null errors) $ do
-    putStrLn $ "[Error] Some arguments were not recognized:\n" ++ intercalate ", " errors
+    putStrLn $ "Error: some arguments were not recognized\n" ++ intercalate ", " errors
     exitFailure
   content <- get $ formatUrl args
   fileAlreadyPresent <- doesFileExist gitignoreFileName
