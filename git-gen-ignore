@@ -93,4 +93,5 @@ main = do
         putStrLn content
         exitSuccess
       _ -> exitFailure
+  putStrLn $ "Writing into .gitignore"
   writeFile gitignoreFileName content
